@@ -6,6 +6,7 @@ from moneyed.l10n import format_money
 from flask_bootstrap import Bootstrap5
 import pyodbc
 import os
+import yaml
 
 
 app = Flask(__name__)
@@ -31,6 +32,19 @@ def get_connection():
         connection_string = f'DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={SERVER};DATABASE={DATABASE};UID={USERNAME};PWD={PASSWORD}'
 
         conn = pyodbc.connect(connection_string)
+    else:
+        config = None
+        with open('config.yaml') as f:
+            config = yaml.safe_load(f)
+        SERVER = config['database'][1]['server']
+        DATABASE = config['database'][1]['database']
+        USERNAME = config['database'][1]['username']
+        PASSWORD = config['database'][1]['password']
+
+        connection_string = f'DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={SERVER};DATABASE={DATABASE};UID={USERNAME};PWD={PASSWORD}'
+
+        conn = pyodbc.connect(connection_string)
+
     return conn
 
 
@@ -40,15 +54,15 @@ def to_float(a_str):
 
 def get_group_members(group_name):
     sql = '''
-        SELECT m.name from mitglieder m JOIN mitglied_in mi on m.id = mi.mitglied_id JOIN gruppen g on g.id = mi.gruppe_id 
-        WHERE g.name = %s
+        SELECT m.name from [wg-haka].mitglieder m JOIN [wg-haka].mitglied_in mi on m.id = mi.mitglied_id JOIN [wg-haka].gruppen g on g.id = mi.gruppe_id 
+        WHERE g.name = ?
     '''
 
     connection = None
     try:
         connection = get_connection()
         cursor = connection.cursor()
-        cursor.execute(sql, (group_name,))
+        cursor.execute(sql, group_name)
         results = cursor.fetchall()
         members = []
         for result in results:
@@ -64,20 +78,21 @@ def get_group_members(group_name):
 
 def get_group_expenses(group_name):
     sql = '''
-        SELECT a.wer, a.was, a.wann, a.wieviel FROM ausgaben a JOIN gruppen g on a.gruppe_id = g.id where g.name = %s
+        SELECT a.wer, a.was, a.wann, a.wieviel FROM [wg-haka].ausgaben a JOIN [wg-haka].gruppen g on a.gruppe_id = g.id where g.name = ?
     '''
+
     connection = None
     try:
 
         connection = get_connection()
         cursor = connection.cursor()
 
-        cursor.execute(sql, (group_name,))
+        cursor.execute(sql, group_name)
         results = cursor.fetchall()
         group_expenses = []
         for result in results:
             group_expenses.append({'wer': result[0], 'was': result[1], 'wann': result[2],
-                                   'wieviel': Money(amount=result[3].replace('$', '').replace(',', ''), currency=EUR)})
+                                   'wieviel': Money(amount=result[3], currency=EUR)})
 
         return group_expenses
 
@@ -90,16 +105,17 @@ def get_group_expenses(group_name):
 
 def get_group_overall_expenses(group_name):
     sql = '''
-        SELECT sum(a.wieviel) from ausgaben a JOIN gruppen g on a.gruppe_id = g.id where g.name = %s
+        SELECT sum(a.wieviel) from [wg-haka].ausgaben a JOIN [wg-haka].gruppen g on a.gruppe_id = g.id where g.name = ?
     '''
+
 
     connection = None
     try:
         connection = get_connection()
         cursor = connection.cursor()
-        cursor.execute(sql, (group_name,))
+        cursor.execute(sql, group_name)
         results = cursor.fetchone()
-        return Money(amount=results[0].replace('$', '').replace(',', ''), currency=EUR)
+        return Money(amount=results[0], currency=EUR)
     except psycopg2.DatabaseError as error:
         print(error)
     finally:
@@ -110,37 +126,38 @@ def get_group_overall_expenses(group_name):
 def get_group_overview(group_name):
     sql = '''
         with anzahl_gruppe as (select count(*) mitglieder
-                       from mitglied_in mi
-                                join gruppen g on mi.gruppe_id = g.id
-                       where g.name = %(group_name)s)
+                       from [wg-haka].mitglied_in mi
+                                join [wg-haka].gruppen g on mi.gruppe_id = g.id
+                       where g.name = ?)
         select sum(a1.wieviel),
                a1.wer,
                g.gesamt,
                g.gesamt / 5 as                            durchschnitt,
                sum(a1.wieviel) - g.gesamt / ag.mitglieder as auslagen
-        from ausgaben a1
-                 JOIN (SELECT sum(wieviel) gesamt, a2.gruppe_id as gruppe_id from ausgaben a2 group by a2.gruppe_id) g
+        from [wg-haka].ausgaben a1
+                 JOIN (SELECT sum(wieviel) gesamt, a2.gruppe_id as gruppe_id from [wg-haka].ausgaben a2 group by a2.gruppe_id) g
                       on a1.gruppe_id = g.gruppe_id
-                JOIN gruppen gr on a1.gruppe_id = gr.id
-                 JOIN anzahl_gruppe ag on TRUE
-        WHERE gr.name = %(group_name)s
+                JOIN [wg-haka].gruppen gr on a1.gruppe_id = gr.id
+                 JOIN anzahl_gruppe ag on 1 = 1
+        WHERE gr.name = ?
         group by wer, g.gesamt, ag.mitglieder
     '''
+
     connection = None
     try:
         connection = get_connection()
         cursor = connection.cursor()
-        cursor.execute(sql, {'group_name': group_name})
+        cursor.execute(sql,  group_name, group_name)
 
         results = cursor.fetchall()
         group_overview = []
         for result in results:
             group_overview.append({
-                'sum': Money(amount=result[0].replace('$', '').replace(',', ''), currency=EUR),
+                'sum': Money(amount=result[0], currency=EUR),
                 'wer': result[1],
-                'gesamt': Money(amount=result[2].replace('$', '').replace(',', ''), currency=EUR),
-                'durchschnitt': Money(amount=result[3].replace('$', '').replace(',', ''), currency=EUR),
-                'auslagen': Money(amount=result[4].replace('$', '').replace(',', ''), currency=EUR)
+                'gesamt': Money(amount=result[2], currency=EUR),
+                'durchschnitt': Money(amount=result[3], currency=EUR),
+                'auslagen': Money(amount=result[4], currency=EUR)
             })
 
         return group_overview
@@ -170,9 +187,9 @@ def groups():
         connection = get_connection()
         cursor = connection.cursor()
         if request.method == 'POST':
-            cursor.execute("INSERT INTO public.gruppen (name) VALUES (%s)", (request.form['name'],))
+            cursor.execute("INSERT INTO [wg-haka].gruppen (name) VALUES (?)", request.form['name'])
             connection.commit()
-        cursor.execute("SELECT * from public.gruppen")
+        cursor.execute("SELECT * from [wg-haka].gruppen")
         gruppen = cursor.fetchall()
         return render_template('groups.html', gruppen=gruppen)
     except psycopg2.DatabaseError as error:
@@ -234,13 +251,14 @@ app.jinja_env.globals.update(money_str=money_str)
 
 def user_exists(username):
     sql = '''
-        SELECT count(*) FROM mitglieder where name = %(username)s
+        SELECT count(*) FROM [wg-haka].mitglieder where name = ?
     '''
+
     connection = None
     try:
         connection = get_connection()
         cursor = connection.cursor()
-        cursor.execute(sql, {'username': username})
+        cursor.execute(sql, username)
         result = cursor.fetchone()
         print(result)
         if result[0] == 1:
@@ -281,20 +299,21 @@ def create_spending(group_name):
 def add_spending(wer, was, wo, wieviel, wann, gruppe):
 
     sql_gruppe_id = '''
-        SELECT id from gruppen where name = %(name)s
+        SELECT id from [wg-haka].gruppen where name = ?
     '''
     sql = '''
-        INSERT INTO ausgaben (wer, was, wann, wieviel, gruppe_id) VALUES (%s, %s, %s, %s, %s) 
+        INSERT INTO [wg-haka].ausgaben (wer, was, wann, wieviel, gruppe_id) VALUES (?,?,?,?,?) 
     '''
+
     connection = None
     try:
         connection = get_connection()
         cursor = connection.cursor()
-        cursor.execute(sql_gruppe_id, {'name': gruppe})
+        cursor.execute(sql_gruppe_id, gruppe)
         result = cursor.fetchone()
         gruppe_id = result[0]
         if result is not None:
-            cursor.execute(sql, (wer, was, wann, wieviel, gruppe_id, ))
+            cursor.execute(sql, wer, was, wann, wieviel, gruppe_id)
             connection.commit()
     except psycopg2.DatabaseError as error:
         print(error)
