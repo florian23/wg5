@@ -5,20 +5,28 @@ from moneyed import Money, EUR
 from moneyed.l10n import format_money
 from flask_bootstrap import Bootstrap5
 import pyodbc
+import os
+
 
 app = Flask(__name__)
 bootstrap = Bootstrap5(app)
 
+type = os.getenv('DB_TYPE')
 
-def get_connection(type):
+def get_connection():
     conn = None
     if type == 'postgres':
-        conn = psycopg2.connect(database='...', user='...', password='...', host='...',port='...')
+        database = os.getenv('DB_DATABASE')
+        user = os.getenv('DB_USERNAME')
+        password = os.getenv('DB_PASSWORD')
+        host = os.getenv('DB_HOST')
+        port = os.getenv('DB_PORT')
+        conn = psycopg2.connect(database=database, user=user, password=password, host=host,port=port)
     if type == 'mssql':
-        SERVER = '...'
-        DATABASE = '...'
-        USERNAME = '...'
-        PASSWORD = '...'
+        SERVER = os.getenv('DB_SERVER')
+        DATABASE = os.getenv('DB_DATABASE')
+        USERNAME = os.getenv('DB_USERNAME')
+        PASSWORD = os.getenv('DB_PASSWORD')
 
         connection_string = f'DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={SERVER};DATABASE={DATABASE};UID={USERNAME};PWD={PASSWORD}'
 
