@@ -69,15 +69,12 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_3510A400BA1944F4A1CB0C6F317EF52E }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_03C557432145437380D09C8ABF3BD651 }}
 
-      - name: Configure deployment and runtime settings on the webapp
-        run: |
-          az webapp config appsettings --name ${{ env.WEBAPP_NAME }} --settings \
-              SCM_DO_BUILD_DURING_DEPLOYMENT=true
-
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v2
         id: deploy-to-webapp
         with:
           app-name: 'wg-haka-app'
           slot-name: 'Production'
+          scm-do-build-during-deployment: true
+          enable-oryx-build: true
           
