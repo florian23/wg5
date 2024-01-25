@@ -1,0 +1,17 @@
+{% extends "layout.html" %}
+{% block title %}Übersicht{% endblock %}
+{% block head %}
+  {{ super() }}
+  <style>
+    .important { color: #336699; }
+  </style>
+{% endblock %}
+{% block content %}
+<h1>Übersicht</h1>
+<h2>Gruppen</h2>
+<a href="groups">Gruppen Management</a>
+
+<h2>Mitglieder</h2>
+<a href="mitglieder">Mitglieder Management</a>
+{% endblock %}
+

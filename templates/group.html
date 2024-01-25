@@ -1,0 +1,84 @@
+{% extends "layout.html" %}
+{% block title %}Gruppe {{group.name}}{% endblock %}
+{% block head %}
+  {{ super() }}
+  <style>
+    .important { color: #336699; }
+  </style>
+{% endblock %}
+{% block content %}
+<h1>Group {{group.name}}</h1>
+<div><a href="/groups/{{group.name}}/create_spending" >Ausgabe hinzufügen</a></div>
+<div>
+  <h2>Members</h2>
+  <ul>
+    {% for member in group.members %}
+    <li>{{member}}</li>
+    {% endfor %}
+  </ul>
+</div>
+<div>
+  <h2>Gesamtausgaben</h2>
+  <div>
+    {{money_str(group.gesamtausgaben)}}
+  </div>
+</div>
+<div>
+  <h2>Überblick</h2>
+  <table class="table">
+    <th>Wer</th>
+    <th>Summe</th>
+    <th>Gesamt</th>
+    <th>Durchschnitt</th>
+    <th>Auslagen oder Schulden</th>
+    {% for item in group.ueberblick %}
+      <tr>
+        <td>{{item.wer}}</td>
+        <td>{{money_str(item.sum)}}</td>
+        <td>{{money_str(item.gesamt)}}</td>
+        <td>{{money_str(item.durchschnitt)}}</td>
+        <td>{{money_str(item.auslagen)}}</td>
+      </tr>
+    {% endfor %}
+  </table>
+</div>
+<div>
+  <h2>Ausgleichhszahlungen</h2>
+  {% for eintrag in group.ausgleichszahlungen %}
+    <h3>{{eintrag.wer}}</h3>
+    {% if eintrag.zahlungen is defined and eintrag.zahlungen|length > 0 %}
+      <div>
+        <h4>zahlt</h4>
+        {% for zahlung in eintrag.zahlungen %}
+          <div>{{eintrag.wer}} schuldet {{zahlung.an}} {{money_str(zahlung.wieviel)}}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if eintrag.erhalten is defined and eintrag.erhalten|length > 0 %}
+      <div>
+        <h4>bekommt</h4>
+        {% for erhalt in eintrag.erhalten %}
+          <div>{{eintrag.wer}} bekommt von {{erhalt.von}} {{money_str(erhalt.wieviel)}}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+<div>
+  <h2>Ausgaben</h2>
+  <table class="table">
+    <th>Wer</th>
+    <th>Wann</th>
+    <th>Was</th>
+    <th>Wieviel</th>
+    {% for ausgabe in group.ausgaben %}
+      <tr>
+        <td>{{ausgabe.wer}}</td>
+        <td>{{ausgabe.wann}}</td>
+        <td>{{ausgabe.was}}</td>
+        <td>{{money_str(ausgabe.wieviel)}}</td>
+      </tr>
+    {% endfor %}
+    </table>
+</div>
+{% endblock %}

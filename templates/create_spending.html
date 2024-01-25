@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block title %}Neue Ausgabe erstellen{% endblock %}
+{% block head %}
+  {{ super() }}
+  <style >
+    .important { color: #336699; }
+  </style>
+{% endblock %}
+{% block content %}
+<div>Neuer Eintrag für Gruppe {{group}}</div>
+{% from '_formhelpers.html' import render_field %}
+<form action="/groups/{{group}}/spending" method="POST">
+{% if form is defined %}
+    <dl>
+        {{ render_field(form.wer) }}
+        {{ render_field(form.was) }}
+        {{ render_field(form.wo) }}
+        {{ render_field(form.wieviel) }}
+        {{ render_field(form.wann) }}
+    </dl>
+{% else %}
+    <p>Wer <input type="text" name = "wer"/></p>
+    <p>Was <input type="text" name = "was"/></p>
+    <p>Wo <input type="text" name = "wo"/></p>
+    <p>Wieviel <input type="text" name = "wieviel"/></p>
+    <p>Wann <input type="text" name = "wann"/></p>
+{% endif %}
+    <p><input type="submit" value="eintragen"></p>
+</form>
+{% endblock %}
