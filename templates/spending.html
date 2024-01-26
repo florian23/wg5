@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block title %}Ausgabe bearbeiten{% endblock %}
+{% block head %}
+{{ super() }}
+<style>
+    .important {
+        color: #336699;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div>Ausgabe bearbeiten in {{group}}</div>
+{% from '_formhelpers.html' import render_field %}
+<form action="/groups/{{group}}/spending" method="POST">
+    {% if form is defined %}
+    <dl>
+        {{ form.method }}
+        {{ form.spending_id }}
+        {{ render_field(form.wer) }}
+        {{ render_field(form.was) }}
+        {{ render_field(form.wieviel) }}
+        {{ render_field(form.wann) }}
+    </dl>
+    <p>
+        <input type="submit" value="Aktualisieren"/></p>
+    {% else %}
+    <p>Ooops. Da ist wohl ein Fehler aufgetreten.</p>
+    {% endif %}
+
+</form>
+{% endblock %}
