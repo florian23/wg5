@@ -7,23 +7,24 @@ from flask_bootstrap import Bootstrap5
 import pyodbc
 import os
 import yaml
-
+from wtforms.fields.simple import HiddenField
 
 app = Flask(__name__)
 bootstrap = Bootstrap5(app)
 
-type = os.getenv('DB_TYPE')
+db_type = os.getenv('DB_TYPE')
+
 
 def get_connection():
     conn = None
-    if type == 'postgres':
+    if db_type == 'postgres':
         database = os.getenv('DB_DATABASE')
         user = os.getenv('DB_USERNAME')
         password = os.getenv('DB_PASSWORD')
         host = os.getenv('DB_HOST')
         port = os.getenv('DB_PORT')
-        conn = psycopg2.connect(database=database, user=user, password=password, host=host,port=port)
-    if type == 'mssql':
+        conn = psycopg2.connect(database=database, user=user, password=password, host=host, port=port)
+    if db_type == 'mssql':
         SERVER = os.getenv('DB_SERVER')
         DATABASE = os.getenv('DB_DATABASE')
         USERNAME = os.getenv('DB_USERNAME')
@@ -78,7 +79,7 @@ def get_group_members(group_name):
 
 def get_group_expenses(group_name):
     sql = '''
-        SELECT a.wer, a.was, a.wann, a.wieviel FROM [wg-haka].ausgaben a JOIN [wg-haka].gruppen g on a.gruppe_id = g.id where g.name = ?
+        SELECT a.wer, a.was, a.wann, a.wieviel, a.id FROM [wg-haka].ausgaben a JOIN [wg-haka].gruppen g on a.gruppe_id = g.id where g.name = ?
     '''
 
     connection = None
@@ -91,7 +92,7 @@ def get_group_expenses(group_name):
         results = cursor.fetchall()
         group_expenses = []
         for result in results:
-            group_expenses.append({'wer': result[0], 'was': result[1], 'wann': result[2],
+            group_expenses.append({'id': result[4], 'wer': result[0], 'was': result[1], 'wann': result[2],
                                    'wieviel': Money(amount=result[3], currency=EUR)})
 
         return group_expenses
@@ -107,7 +108,6 @@ def get_group_overall_expenses(group_name):
     sql = '''
         SELECT sum(a.wieviel) from [wg-haka].ausgaben a JOIN [wg-haka].gruppen g on a.gruppe_id = g.id where g.name = ?
     '''
-
 
     connection = None
     try:
@@ -147,7 +147,7 @@ def get_group_overview(group_name):
     try:
         connection = get_connection()
         cursor = connection.cursor()
-        cursor.execute(sql,  group_name, group_name)
+        cursor.execute(sql, group_name, group_name)
 
         results = cursor.fetchall()
         group_overview = []
@@ -249,6 +249,7 @@ def money_str(money):
 
 app.jinja_env.globals.update(money_str=money_str)
 
+
 def user_exists(username):
     sql = '''
         SELECT count(*) FROM [wg-haka].mitglieder where name = ?
@@ -273,12 +274,11 @@ def user_exists(username):
             connection.close()
 
 
-
-
 class SpendingForm(Form):
+    method = HiddenField('_method')
+    spending_id = HiddenField('_spending_id')
     wer = StringField('Wer', [validators.DataRequired(), validators.Length(min=3, max=256)])
     was = StringField('Was', [validators.Optional(), validators.Length(min=3, max=256)])
-    wo = StringField('Wo', [validators.DataRequired(), validators.Length(min=3, max=256)])
     wann = DateField('Wann', validators=[validators.DataRequired()])
     wieviel = StringField('Wieviel', validators=[
         validators.DataRequired(),
@@ -290,14 +290,81 @@ class SpendingForm(Form):
         if not user_exists(field.data):
             raise ValidationError('Name ist nicht vorhanden.')
 
+
 @app.route('/groups/<group_name>/create_spending')
 def create_spending(group_name):
     form = SpendingForm(request.form, meta={'locales': ['de_DE', 'de']})
     return render_template('create_spending.html', group=group_name, form=form)
 
 
-def add_spending(wer, was, wo, wieviel, wann, gruppe):
+def get_spending(spending):
+    sql = '''
+        SELECT wer, was, wann, wieviel from [wg-haka].ausgaben where id = ?
+    '''
 
+    connection = None
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+        cursor.execute(sql, spending)
+        result = cursor.fetchone()
+
+        return {
+            'wer': result[0],
+            'was': result[1],
+            'wann': result[2],
+            'wieviel': result[3]
+        }
+    except psycopg2.DatabaseError as error:
+        print(error)
+        connection.rollback()
+    finally:
+        if connection is not None:
+            connection.close()
+
+def truncate(f, n):
+    '''Truncates/pads a float f to n decimal places without rounding'''
+    s = '{}'.format(f)
+    if 'e' in s or 'E' in s:
+        return '{0:.{1}f}'.format(f, n)
+    i, p, d = s.partition('.')
+    return '.'.join([i, (d+'0'*n)[:n]])
+
+@app.route('/groups/<group_name>/spendings/<spending>')
+def update_spending(group_name, spending):
+    form = SpendingForm(request.form, meta={'locales': ['de_DE', 'de']})
+    result = get_spending(spending)
+    form.wer.data = result['wer']
+    form.was.data = result['was']
+    form.wann.data = result['wann']
+    form.wieviel.data = truncate(result['wieviel'], 2)
+    form.spending_id.data = spending
+    form.method.data = "PUT"
+    return render_template('spending.html', group=group_name, spending=spending, form=form)
+
+
+def update_spending(wer, was, wieviel, wann, spending_id):
+    sql = '''
+        UPDATE [wg-haka].ausgaben
+        SET wer = ?, was = ?, wieviel = ?, wann = ?
+        WHERE id = ?
+    '''
+
+    connection = None
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+        cursor.execute(sql, wer, was, wieviel, wann, spending_id)
+        connection.commit()
+    except psycopg2.DatabaseError as error:
+        print(error)
+        connection.rollback()
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def add_spending(wer, was, wieviel, wann, gruppe):
     sql_gruppe_id = '''
         SELECT id from [wg-haka].gruppen where name = ?
     '''
@@ -323,18 +390,14 @@ def add_spending(wer, was, wo, wieviel, wann, gruppe):
             connection.close()
 
 
-
 @app.route('/groups/<group_name>/spending', methods=['POST', 'GET'])
 def spending(group_name):
     form = SpendingForm(request.form, meta={'locales': ['de_DE', 'de']})
     if request.method == 'POST' and form.validate():
-        print(form.wer.data)
-        print(form.was.data)
-        print(form.wann.data)
-        print(form.wo.data)
-        print(form.wieviel.data)
-
-        add_spending(form.wer.data, form.was.data, form.wo.data, form.wieviel.data, form.wann.data, group_name)
+        if form.method.data == 'PUT':
+            update_spending(form.wer.data, form.was.data, form.wieviel.data, form.wann.data, form.spending_id.data)
+        else:
+            add_spending(form.wer.data, form.was.data, form.wieviel.data, form.wann.data, group_name)
 
         return redirect('/groups/' + group_name, code=302)
     else:
